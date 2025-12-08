@@ -41,6 +41,11 @@ FTIR_Project/
 
 ## 🛠️ Installation & Setup
 
+### Clone Project From github
+
+    git clone https://github.com/kaopeetipat/FTIR_Project.git
+    cd FTIR_Project
+    
 ### Backend Setup
 
 1.  **Navigate to the backend directory:**
