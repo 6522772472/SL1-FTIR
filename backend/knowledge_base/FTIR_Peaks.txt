@@ -1,0 +1,36 @@
+FTIR Characteristic Peaks and Chemical Structures of 22 Microplastics:
+
+1. Polyolefins (Aliphatic Hydrocarbons: HDPE, LDPE, PP, EPDM)
+HDPE & LDPE: Characterized by strong aliphatic C-H stretching at 2848-2850 and 2915-2920 cm⁻¹. The distinctive feature is the CH₂ rocking doublet around 718-731 cm⁻¹ and CH₂ bending at 1460-1473 cm⁻¹.
+PP (Polypropylene): Similar to PE but distinguished by the prominent methyl (-CH₃) umbrella bending mode at 1376 cm⁻¹, and specific skeletal vibrations at 973 and 997 cm⁻¹.
+EPDM: Shows typical aliphatic hydrocarbon bands at 2850, 2920, and 1460 cm⁻¹, with a characteristic rocking band at 722 cm⁻¹.
+
+2. Aromatic Polymers (PS)
+PS (Polystyrene): Highly distinctive mono-substituted benzene ring vibrations at 698 and 757 cm⁻¹. Also features aromatic C-H stretching above 3000 cm⁻¹ (specifically at 3027 cm⁻¹) and aromatic ring C=C stretching around 1454 and 1494 cm⁻¹.
+
+3. Polyesters (PET, PBAT, PBS, PLA)
+PET: Strong ester carbonyl (C=O) stretching at 1714 cm⁻¹, C-O stretching at 1095 and 1241 cm⁻¹, and out-of-plane aromatic C-H bending at 724 and 872 cm⁻¹.
+PLA: Prominent ester carbonyl (C=O) at 1751 cm⁻¹, and C-O-C stretching at 1088 and 1184 cm⁻¹.
+PBAT & PBS: Show strong ester carbonyl (C=O) stretching around 1711-1712 cm⁻¹ and C-O stretching bands between 1044-1268 cm⁻¹.
+
+4. Polycarbonates and Acrylics (PC, PMMA, Acrylic)
+PC (Polycarbonate): Extremely distinctive carbonate carbonyl (C=O) stretching at an unusually high wavenumber of 1772 cm⁻¹, along with aromatic ring vibrations at 1500 and 830 cm⁻¹.
+PMMA & Acrylic: Strong ester carbonyl (C=O) peak at 1724-1728 cm⁻¹, and C-O stretching vibrations at 1146-1195 cm⁻¹.
+
+5. Nitrogen-Containing Polymers (Nylon, PU, PEI)
+Nylon (Polyamide): Characterized by N-H stretching at 3296 cm⁻¹, Amide I (C=O stretching) at 1636 cm⁻¹, and Amide II (N-H bending / C-N stretching) at 1537 cm⁻¹.
+PU (Polyurethane): Shows urethane carbonyl (C=O) stretching at 1700 and 1728 cm⁻¹, Amide II at 1528 cm⁻¹, and N-H stretching at 3290 cm⁻¹.
+PEI (Polyetherimide): Distinctive imide carbonyl (C=O) doublet at 1718 and 1776 cm⁻¹, along with C-N stretching at 1354 cm⁻¹.
+
+6. Halogenated Polymers (PVC, PTFE)
+PVC (Polyvinyl Chloride): Lacks strong carbonyl peaks but is characterized by C-Cl stretching vibrations in the low-frequency region at 615 and 690 cm⁻¹.
+PTFE (Teflon): Dominated by extremely strong C-F stretching vibrations at 1146 and 1201 cm⁻¹, lacking typical C-H stretching bands.
+
+7. Hydroxyl-Containing Polymers (Cellulose, PVA)
+Cellulose: Broad O-H stretching band around 3335 cm⁻¹, and strong C-O / C-O-C stretching vibrations in the polysaccharide skeleton at 1030, 1055, and 1160 cm⁻¹.
+PVA (Polyvinyl Alcohol): Broad O-H stretching band at 3303 cm⁻¹, and C-O stretching at 1088 cm⁻¹.
+
+8. Specialty Engineering Plastics (PEEK, POM, ENR)
+PEEK: Features a conjugated ketone carbonyl (C=O) at 1651 cm⁻¹, aromatic ring vibrations at 1490 and 1598 cm⁻¹, and diaryl ether (C-O-C) stretching at 1235 cm⁻¹. (Also note distinct peaks at 895 and 1094 cm⁻¹).
+POM (Polyacetal): Dominated by intense C-O-C stretching vibrations of the acetal linkage at 927 and 1218 cm⁻¹.
+ENR (Epoxidized Natural Rubber): Characterized by epoxide ring vibrations at 875 and 1251 cm⁻¹, along with typical aliphatic C-H bands.

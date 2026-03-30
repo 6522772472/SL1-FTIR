@@ -2,18 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Step3Denoising.css';
 
-const MEMBRANE_FILTERS = [
-  { value: 'Cellulose Ester', label: 'Cellulose Ester' },
-  { value: 'Glass Fiber', label: 'Glass Fiber' },
-  { value: 'Nylon', label: 'Nylon' }
-];
-
 const DENOISING_MODELS = [
   { value: 'disable', label: 'Disable (No Denoising)' },
-  { value: 'CAE', label: 'CAE' },
-  { value: 'CNNAE-Xception', label: 'CNNAE-Xception' },
-  { value: 'CNNAE-ResNet50', label: 'CNNAE-ResNet50' },
-  { value: 'CNNAE-InceptionV3', label: 'CNNAE-InceptionV3' }
+  { value: 'cae', label: 'CAE (Convolutional Autoencoder)' },
+  { value: 'VGG16-Transformer', label: 'VGG16 + Transformer' },
+  { value: 'ResNet50-Transformer', label: 'ResNet50 + Transformer' }
 ];
 
 function Step3Denoising({
@@ -33,12 +26,6 @@ function Step3Denoising({
   const [error, setError] = useState(null);
   const [showClearModal, setShowClearModal] = useState(false);
 
-  const handleMembraneFilterChange = (value) => {
-    if (!isApplied) {
-      setDenoisingConfig(prev => ({ ...prev, membraneFilter: value }));
-    }
-  };
-
   const handleDenoisingModelChange = (value) => {
     if (!isApplied) {
       setDenoisingConfig(prev => ({ ...prev, denoisingModel: value }));
@@ -46,7 +33,8 @@ function Step3Denoising({
   };
 
   const handleApply = async () => {
-    if (!denoisingConfig.membraneFilter || !denoisingConfig.denoisingModel || !canProceed) return;
+    // เช็คแค่ว่าเลือก Denoising Model แล้วหรือยัง
+    if (!denoisingConfig.denoisingModel || !canProceed) return;
 
     setIsProcessing(true);
     setError(null);
@@ -58,7 +46,7 @@ function Step3Denoising({
         : spectralData.originalIntensities;
       
       formData.append('intensities', JSON.stringify(inputIntensities));
-      formData.append('membrane_filter', denoisingConfig.membraneFilter);
+      // ส่งแค่ค่า denoising_model ไปให้ Backend
       formData.append('denoising_model', denoisingConfig.denoisingModel);
 
       const response = await fetch('http://localhost:8000/api/denoise', {
@@ -90,7 +78,8 @@ function Step3Denoising({
   };
 
   const confirmClear = () => {
-    setDenoisingConfig({ membraneFilter: null, denoisingModel: null });
+    // รีเซ็ตเฉพาะ denoisingModel
+    setDenoisingConfig({ denoisingModel: null });
     setSpectralData(prev => ({
       ...prev,
       denoisedIntensities: []
@@ -123,7 +112,8 @@ function Step3Denoising({
     );
   }
 
-  const isSelectionComplete = denoisingConfig.membraneFilter && denoisingConfig.denoisingModel;
+  // เช็คแค่การเลือก Model อย่างเดียว
+  const isSelectionComplete = !!denoisingConfig.denoisingModel;
 
   return (
     <div className="step-container step3">
@@ -144,7 +134,7 @@ function Step3Denoising({
               />
             ) : (
               <div className="chart-placeholder">
-                <p>Select membrane filter and denoising model, then click APPLY</p>
+                <p>Select denoising model, then click APPLY</p>
               </div>
             )}
           </div>
@@ -153,27 +143,6 @@ function Step3Denoising({
         {/* Control Panel */}
         <div className="control-panel">
           <h2>Denoising Configuration</h2>
-          
-          {/* Membrane Filter Selection */}
-          <div className="radio-group">
-            <h3>Membrane Filter</h3>
-            {MEMBRANE_FILTERS.map(filter => (
-              <label 
-                key={filter.value}
-                className={`radio-option ${denoisingConfig.membraneFilter === filter.value ? 'selected' : ''}`}
-              >
-                <input
-                  type="radio"
-                  name="membrane-filter"
-                  value={filter.value}
-                  checked={denoisingConfig.membraneFilter === filter.value}
-                  onChange={(e) => handleMembraneFilterChange(e.target.value)}
-                  disabled={isApplied}
-                />
-                <span className="radio-label">{filter.label}</span>
-              </label>
-            ))}
-          </div>
 
           {/* Denoising Model Selection */}
           <div className="radio-group">

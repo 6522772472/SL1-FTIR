@@ -20,6 +20,7 @@ import logging
 import keras
 import tensorflow as tf
 from tensorflow import GradientTape
+from tensorflow.keras.layers import Layer
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -28,6 +29,34 @@ from fastapi.responses import JSONResponse
 from scipy import interpolate
 from scipy.signal import savgol_filter
 from scipy.stats import pearsonr
+from pydantic import BaseModel
+import ollama
+from langchain_community.document_loaders import PyPDFDirectoryLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_ollama import OllamaEmbeddings
+from langchain_community.vectorstores import Chroma
+from typing import Optional
+from typing import Dict, List, Optional, Tuple, Any
+
+class PositionEmbedding(Layer):
+    def __init__(self, max_len, **kwargs):
+        super(PositionEmbedding, self).__init__(**kwargs)
+        self.max_len = max_len
+
+    def build(self, input_shape):
+        self.pos_emb = self.add_weight(shape=(1, self.max_len, input_shape[-1]),
+                                       initializer='uniform',
+                                       trainable=True,
+                                       name="Positional_Embedding")
+        super(PositionEmbedding, self).build(input_shape)
+
+    def call(self, x):
+        return x + self.pos_emb
+
+    def get_config(self):
+        config = super(PositionEmbedding, self).get_config()
+        config.update({"max_len": self.max_len})
+        return config
 
 # ---------------------------------------------------------------------------
 # Logging / app bootstrap
@@ -37,6 +66,27 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ftir-backend")
 
 app = FastAPI(title="FTIR Microplastic Analysis Backend", version="2.0.0")
+
+print("Loading AI...")
+try:
+    #โหลด PDF ทั้งหมดจากโฟลเดอร์
+    loader = PyPDFDirectoryLoader("knowledge_base")
+    docs = loader.load()
+    
+    #หั่นข้อความเป็นชิ้นเล็กๆ(เพื่อให้ AI ค้นหาแม่นยำ)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    splits = text_splitter.split_documents(docs)
+    
+    #แปลงข้อความเป็นเวกเตอร์แล้วเก็บใน ChromaDB
+    embeddings = OllamaEmbeddings(model="nomic-embed-text")
+    vectorstore = Chroma.from_documents(documents=splits, embedding=embeddings)
+    
+    #สร้างตัวค้นหา(ดึงข้อมูลที่เกี่ยวข้องที่สุดมา n ย่อหน้า)
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
+    print("Document successfully downloaded!")
+except Exception as e:
+    print(f"The system could not be loaded(Please check the *knowledge_base* folder): {e}")
+    retriever = None
 
 app.add_middleware(
     CORSMiddleware,
@@ -118,11 +168,16 @@ MEMBRANE_CODE_ALIAS = {
     "b": "B",
     "e": "E",
     "d": "D",
+    "none": "BDE" #แก้ เพิ่มเพื่อบอกว่าถ้าไม่เลือก Filter ให้ใช้โค้ด BDE
 }
 
 DENOISING_NAME_ALIAS = {
     "disable": "NoDenoise",
     "none": "NoDenoise",
+    "vgg16-transformer": "VGG16Transformer", #แก้ เพิ่ม
+    "resnet50-transformer": "ResNet50Transformer", #แก้ เพิ่ม
+    "vgg16transformer": "VGG16Transformer",
+    "resnet50transformer": "ResNet50Transformer",
     "cae": "CAE",
     "cnnae-xception": "Xception",
     "cnnae-resnet50": "ResNet50",
@@ -235,7 +290,7 @@ class ModelManager:
         key = model_path.stem
         if key not in self.cache:
             logger.info("Loading classifier %s", model_path.name)
-            model = keras.models.load_model(model_path, compile=False)
+            model = keras.models.load_model(model_path, custom_objects={'PositionEmbedding': PositionEmbedding})
             logits_layer = model.layers[-1]
             if hasattr(logits_layer, "activation"):
                 logits_layer.activation = keras.activations.linear
@@ -310,7 +365,7 @@ class DenoiseModelManager:
         key = model_path.stem
         if key not in self.cache:
             logger.info("Loading denoising model %s", model_path.name)
-            model = keras.models.load_model(model_path, compile=False)
+            model = keras.models.load_model(model_path, custom_objects={'PositionEmbedding': PositionEmbedding})
 
             input_shape = model.input_shape
             if isinstance(input_shape, list):
@@ -849,7 +904,7 @@ async def preprocess_spectrum(
 @app.post("/api/denoise")
 async def denoise_spectrum(
     intensities: str = Form(...),
-    membrane_filter: str = Form(...),
+    membrane_filter: str = Form("None"), #แก้ ใส่ค่าnone แทน
     denoising_model: str = Form(...),
 ):
     try:
@@ -870,6 +925,10 @@ async def denoise_spectrum(
         if denoising_model.lower() != "disable":
             membrane_code = resolve_membrane_code(membrane_filter)
             denoise_name = resolve_denoising_name(denoising_model)
+            if denoise_name in ["VGG16Transformer", "ResNet50Transformer"]:
+                membrane_code = "BDE"
+            elif membrane_code == "BDE":
+                membrane_code = "B"
             model_path = denoise_manager.resolve_identifier(membrane_code, denoise_name)
             try:
                 processed = run_denoising_model(
@@ -905,7 +964,7 @@ async def denoise_spectrum(
 @app.post("/api/classify")
 async def classify_spectrum(
     intensities: str = Form(...),
-    membrane_filter: str = Form(...),
+    membrane_filter: str = Form("None"), #แก้ ใส่none
     denoising_model: str = Form(...),
     classification_model: str = Form(...),
     baseline_intensities: Optional[str] = Form(None),
@@ -969,7 +1028,10 @@ async def classify_spectrum(
 
         membrane_code = resolve_membrane_code(membrane_filter)
         denoise_name = resolve_denoising_name(denoising_model)
-
+        if denoise_name in ["VGG16Transformer", "ResNet50Transformer"]:
+            membrane_code = "BDE"
+        elif membrane_code == "BDE":
+            membrane_code = "B"
         model_path = None
         try:
             model_path = model_manager.resolve_identifier(
@@ -1102,3 +1164,93 @@ if __name__ == "__main__":  # pragma: no cover
     import uvicorn
 
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
+
+#New
+class ReasoningRequest(BaseModel):
+    llm_engine: str
+    plastic_type: str
+    correlation: float
+    image: Optional[List[float]] = None
+
+@app.post("/api/reasoning")
+async def generate_reasoning(request: ReasoningRequest):
+    
+    THEORY_DATABASE = """
+    1. Acrylic: [1150, 1195, 1728, 2947] (C=O stretching at 1728)
+    2. Cellulose: [900, 1005, 1065, 1280, 1650]
+    3. ENR: [870, 1380, 1450, 2854, 2916, 2960]
+    4. EPDM: [720, 1376, 1466, 2848, 2918]
+    5. HDPE: [720, 731, 1470, 2850, 2915]
+    6. LDPE: [720, 731, 1460, 2850, 2920]
+    7. Nylon: [690, 1200, 1266, 1542, 1638, 2870, 2933, 3300]
+    8. PBAT: [728, 1020, 1105, 1270, 1715, 2365, 2960]
+    9. PBS: [805, 919, 954, 1050, 1151, 1312, 1313, 1715]
+    10. PC: [830, 1080, 1161, 1500, 1772]
+    11. PEEK: [895, 1094, 1235, 1490, 1598, 1651, 2915, 2977]
+    12. PEI: [1354, 1718, 1776, 2933]
+    13. PET: [724, 872, 1095, 1241, 1714, 2963]
+    14. PLA: [1088, 1184, 1456, 1751, 2921, 2997]
+    15. PMMA: [841, 1146, 1437, 1724, 2952, 2995]
+    16. POM: [680, 927, 1218, 1488, 1596, 2921, 2980]
+    17. PP: [841, 973, 997, 1166, 1376, 1456, 2839, 2916, 2951]
+    18. PS: [698, 757, 1454, 1494, 2848, 2921, 3027]
+    19. PTFE: [1146, 1201]
+    20. PU: [1528, 1700, 1728, 2933, 3290]
+    21. PVA: [1088, 2910, 2938, 3303]
+    22. PVC: [615, 690, 1253, 1425, 2910, 2969]
+    """
+
+    prompt_base = f"""
+    You are an expert polymer chemist.
+    We analyzed a microplastic spectrum using FTIR. The CNN model predicted it as "{request.plastic_type}" with a confidence of {request.correlation:.4f}.
+    
+    Here is our reference theoretical database for FTIR peaks:
+    ---
+    {THEORY_DATABASE}
+    ---
+    """
+
+    messages = []
+
+    #llava(ตอนนี้ยังแปลงภาพ)
+    if request.llm_engine == "llava" and request.image:
+        #แปลงค่าสีแดงเป็น Wavenumber
+        red_spots = []
+        #แกน X สมมติ 1,340 จุด(ตั้งแต่ 650 ถึง 4000)
+        wavenumbers = np.linspace(650, 4000, 1340)
+        
+        #เช็คจำนวนจุด
+        if len(request.image) == 1340:
+            #แกน X มาจับคู่กับ Array ความร้อน(request.image) ทีละจุด
+            for i, heat in enumerate(request.image):
+                if heat > 0.7:  #ดึงเฉพาะจุดที่สีแดงเข้ม(เกิน 0.7)
+                    red_spots.append(int(wavenumbers[i]))
+                    
+        #จัดกลุ่มตัวเลขที่ใกล้เคียงกัน(รวมเป็นตัวเลขที่ได้ แต่อยู่ในstr)
+        red_spot_str = ", ".join(map(str, sorted(list(set(red_spots)))[:15])) if red_spots else "various wavenumbers"
+
+        prompt = prompt_base + f"""
+        Look at the CNN activation map data. The model focused heavily on the following wavenumbers: {red_spot_str} cm-1. 
+        Compare these focused wavenumbers with the theoretical peaks of {request.plastic_type} in the database.
+
+        CRITICAL RULES:
+        1. STRICT MATCHING: If the focused wavenumbers (e.g., ~810 cm-1) DO NOT MATCH the theoretical peaks of {request.plastic_type} (e.g., 1728 cm-1), YOU MUST STATE CLEARLY THAT THEY DO NOT MATCH. Do NOT pretend that 800 is close to 1700.
+        2. XAI EXPLANATION: If there is a mismatch, explain from a Deep Learning perspective that CNNs sometimes learn non-theoretical features, such as background noise, baseline characteristics, or minor structural vibrations specific to the training dataset, rather than the primary chemical bonds.
+        3. If they DO match, explain the chemical bonds based ONLY on the database.
+        4. Keep the tone academic, objective, and within 3 short paragraphs.
+        """
+        
+        messages = [{'role': 'user', 'content': prompt}]
+        
+    else:
+        #(llama3)
+        prompt = prompt_base + f"\nBased strictly on the theoretical database provided above, look up the characteristic peaks of {request.plastic_type} and provide an academic, concise explanation of why these absorption peaks correspond to its chemical structure. Start your explanation immediately. Keep it within 3 short paragraphs."
+        
+        messages = [{'role': 'user', 'content': prompt}]
+
+    #Ollama คิดคำตอบ
+    try:
+        response = ollama.chat(model=request.llm_engine, messages=messages)
+        return {"reasoning": response['message']['content']}
+    except Exception as e:
+        return {"reasoning": f"Error from Ollama: {str(e)}"}

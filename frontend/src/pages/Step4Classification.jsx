@@ -9,9 +9,8 @@ const CLASSIFICATION_MODELS = [
 ];
 
 const LLM_MODELS = [
-  { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
-  { value: 'gpt-4o-mini', label: 'GPT-4o-mini' },
-  { value: 'llama-3', label: 'Llama-3' }
+  { value: 'llama3', label: 'Meta Llama 3 (Text Only)' },
+  { value: 'llava', label: 'LLaVA (Vision + Text)' }
 ];
 
 function Step4Classification({
@@ -40,8 +39,8 @@ function Step4Classification({
   const [showDenoised, setShowDenoised] = useState(true);
   const [showClassification, setShowClassification] = useState(true);
 
-  const [llmEngine, setLlmEngine] = useState('gemini-1.5-pro');
-  const [selectedLLM, setSelectedLLM] = useState('gemini-1.5-pro');
+  const [llmEngine, setLlmEngine] = useState('llama3');
+  const [selectedLLM, setSelectedLLM] = useState('llama3');
   const [isLlmApplied, setIsLlmApplied] = useState(false);
   const [isProcessingLlm, setIsProcessingLlm] = useState(false);
 
@@ -78,7 +77,7 @@ function Step4Classification({
           : spectralData.originalIntensities);
       
       formData.append('intensities', JSON.stringify(inputIntensities));
-      formData.append('membrane_filter', denoisingConfig.membraneFilter || 'Cellulose Ester');
+      formData.append('membrane_filter', 'None');
       formData.append('denoising_model', denoisingConfig.denoisingModel || 'disable');
       formData.append('classification_model', classificationModel);
       
@@ -127,23 +126,45 @@ function Step4Classification({
 
   const handleApplyLLM = async () => {
     setIsProcessingLlm(true);
-    setTimeout(() => {
-      let mockReasoning = "";
-      if (llmEngine === 'disable') {
-         mockReasoning = `ดำเนินการโดยใช้วิธีหาความคล้ายคลึง (Correlation) เทียบกับฐานข้อมูล Library\n\n• พบความคล้ายคลึงสูงสุดกับ ${results?.plasticType || 'Unknown'}\n\n* หมายเหตุ: ไม่มีการอธิบายเชิงลึกเนื่องจากเลือกโหมด Not Select (ไม่ใช้ LLM)`;
-      } else {
-         mockReasoning = `[ ข้อมูลวิเคราะห์โดย: ${LLM_MODELS.find(m => m.value === llmEngine)?.label} ]\n\nจากการวิเคราะห์สเปกตรัมที่ผ่านการลดสัญญาณรบกวน พบจุดพีคการดูดกลืนแสงสอดคล้องกับโครงสร้างทางเคมีของ ${results?.plasticType || 'Unknown'}\n\n• รูปแบบพีคตรงกับฐานข้อมูลอ้างอิงด้วยความแม่นยำ ${(results?.correlation * 100).toFixed(2)}%\n• ไม่พบการรบกวนที่ผิดปกติจากแผ่นกรอง\n\nสรุป: ยืนยันผลการประเมินด้วย AI ว่าเป็นไมโครพลาสติกชนิด ${results?.plasticType || 'Unknown'}`;
-      }
+    setError(null);
+
+    if (llmEngine === 'disable') {
+       const mockReasoning = `ดำเนินการโดยใช้วิธีหาความคล้ายคลึง (Correlation) เทียบกับฐานข้อมูล Library\n\n• พบความคล้ายคลึงสูงสุดกับ ${results?.plasticType || 'Unknown'}\n\n* หมายเหตุ: ไม่มีการอธิบายเชิงลึกเนื่องจากเลือกโหมด Not Select (ไม่ใช้ LLM)`;
+       setResults(prev => ({ ...prev, reasoning: mockReasoning }));
+       setIsLlmApplied(true);
+       setIsProcessingLlm(false);
+       return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/reasoning', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          llm_engine: llmEngine,
+          plastic_type: results.plasticType || 'Unknown',
+          correlation: results.correlation || 0,
+          image: results.camHeatmap || []
+        })
+      });
+
+      if (!response.ok) throw new Error('An error occurred during LLM processing');
+
+      const data = await response.json();
       
-      setResults(prev => ({ ...prev, reasoning: mockReasoning }));
+      setResults(prev => ({ ...prev, reasoning: data.reasoning }));
       setSpectralData(prev => ({
         ...prev,
-        classificationResult: { ...prev.classificationResult, reasoning: mockReasoning }
+        classificationResult: { ...prev.classificationResult, reasoning: data.reasoning }
       }));
 
+    } catch (err) {
+      console.error(err);
+      setResults(prev => ({ ...prev, reasoning: "เกิดข้อผิดพลาด: ไม่สามารถเชื่อมต่อกับ AI Server (Ollama) ได้ โปรดตรวจสอบให้แน่ใจว่าได้เปิดระบบหลังบ้านแล้ว" }));
+    } finally {
       setIsLlmApplied(true);
       setIsProcessingLlm(false);
-    }, 2500);
+    }
   };
 
   const handleClearClick = () => {
@@ -152,8 +173,8 @@ function Step4Classification({
 
   const confirmClear = () => {
     setClassificationModel(null);
-    setLlmEngine('gemini-1.5-pro');
-    setSelectedLLM('gemini-1.5-pro');
+    setLlmEngine('llama3');
+    setSelectedLLM('llama3');
     setIsLlmApplied(false);
     setResults(null);
     setActiveVisualization('spectrum');
@@ -751,23 +772,6 @@ function Step4Classification({
 
         {/* Right Side - Results and Controls */}
         <div className="results-control-panel">
-          
-          <div className="reasoning-large-panel">
-            <h2>REASONING ANALYSIS</h2>
-            <div className="reasoning-content">
-              {isProcessingLlm ? (
-                <div className="loading-state">
-                  <span className="spinner"></span> Generating reasoning...
-                </div>
-              ) : isLlmApplied && results?.reasoning ? (
-                <p>{results.reasoning}</p>
-              ) : activeVisualization === 'cam' ? (
-                <p className="placeholder-text">Please click 'APPLY' to generate reasoning.</p>
-              ) : (
-                <p className="placeholder-text">Go to 'ACTIVATION MAP & REASONING' tab to select LLM and generate reasoning.</p>
-              )}
-            </div>
-          </div>
 
           <div className="bottom-results-wrapper">
             <div className="results-panel">
@@ -786,10 +790,6 @@ function Step4Classification({
             <div className="config-info">
               <h3>Current Configuration</h3>
               <div className="config-item">
-                <span className="config-label">Membrane Filter:</span>
-                <span className="config-value">{denoisingConfig.membraneFilter || 'Not Set'}</span>
-              </div>
-              <div className="config-item">
                 <span className="config-label">Denoising Model:</span>
                 <span className="config-value">{denoisingConfig.denoisingModel || 'Not Set'}</span>
               </div>
@@ -798,6 +798,23 @@ function Step4Classification({
                 <span className="config-value">{classificationModel === 'disable' ? 'Correlation' : (classificationModel || 'Not Set')}</span>
               </div>
             </div>
+
+            <div className="reasoning-large-panel">
+            <h2>REASONING ANALYSIS</h2>
+            <div className="reasoning-content">
+              {isProcessingLlm ? (
+                <div className="loading-state">
+                  <span className="spinner"></span> Generating reasoning...
+                </div>
+              ) : isLlmApplied && results?.reasoning ? (
+                <p>{results.reasoning}</p>
+              ) : activeVisualization === 'cam' ? (
+                <p className="placeholder-text">Please click 'APPLY' to generate reasoning.</p>
+              ) : (
+                <p className="placeholder-text">Go to 'ACTIVATION MAP & REASONING' tab to select LLM and generate reasoning.</p>
+              )}
+            </div>
+          </div>
 
             {error && <p className="error-text">{error}</p>}
 
