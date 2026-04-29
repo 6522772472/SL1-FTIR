@@ -22,7 +22,7 @@ function Step2Preprocessing({
     normalization: [],
     both: []
   });
-  const [selectedView, setSelectedView] = useState('both'); // Default view
+  const [selectedView, setSelectedView] = useState(preprocessingOption || 'both'); // Default view
 
   // Auto-calculate all preprocessing options when component mounts or data changes
   useEffect(() => {
@@ -77,6 +77,7 @@ function Step2Preprocessing({
 
   const handleViewChange = (view) => {
     setSelectedView(view);
+    setPreprocessingOption(view);
   };
 
   const handleNext = () => {

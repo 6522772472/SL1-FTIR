@@ -125,47 +125,55 @@ function Step4Classification({
   };
 
   const handleApplyLLM = async () => {
-    setIsProcessingLlm(true);
-    setError(null);
+  setIsProcessingLlm(true);
+  setError(null);
 
-    if (llmEngine === 'disable') {
-       const mockReasoning = `ดำเนินการโดยใช้วิธีหาความคล้ายคลึง (Correlation) เทียบกับฐานข้อมูล Library\n\n• พบความคล้ายคลึงสูงสุดกับ ${results?.plasticType || 'Unknown'}\n\n* หมายเหตุ: ไม่มีการอธิบายเชิงลึกเนื่องจากเลือกโหมด Not Select (ไม่ใช้ LLM)`;
-       setResults(prev => ({ ...prev, reasoning: mockReasoning }));
-       setIsLlmApplied(true);
-       setIsProcessingLlm(false);
-       return;
-    }
+  if (llmEngine === 'disable') {
+    const mockReasoning = `Correlation-based result: ${results?.plasticType || 'Unknown'}\nNo AI reasoning selected.`;
+    setResults(prev => ({ ...prev, reasoning: mockReasoning }));
+    setIsLlmApplied(true);
+    setIsProcessingLlm(false);
+    return;
+  }
 
-    try {
-      const response = await fetch('http://localhost:8000/api/reasoning', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          llm_engine: llmEngine,
-          plastic_type: results.plasticType || 'Unknown',
-          correlation: results.correlation || 0,
-          image: results.camHeatmap || []
+  // เลือก denoised spectrum (ถ้ามี) ไม่งั้นใช้ preprocessed
+  const spectrumToSend =
+    spectralData.denoisedIntensities?.length > 0
+      ? spectralData.denoisedIntensities
+      : spectralData.preprocessedIntensities;
+
+  try {
+    const response = await fetch('http://localhost:8000/api/reasoning', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        llm_engine:      llmEngine,
+        plastic_type:    results.plasticType || 'Unknown',
+        correlation:     results.correlation || 0,
+        clean_spectrum: spectralData.preprocessedIntensities || [] 
         })
-      });
+    });
 
-      if (!response.ok) throw new Error('An error occurred during LLM processing');
-
-      const data = await response.json();
-      
-      setResults(prev => ({ ...prev, reasoning: data.reasoning }));
-      setSpectralData(prev => ({
-        ...prev,
-        classificationResult: { ...prev.classificationResult, reasoning: data.reasoning }
-      }));
-
-    } catch (err) {
-      console.error(err);
-      setResults(prev => ({ ...prev, reasoning: "เกิดข้อผิดพลาด: ไม่สามารถเชื่อมต่อกับ AI Server (Ollama) ได้ โปรดตรวจสอบให้แน่ใจว่าได้เปิดระบบหลังบ้านแล้ว" }));
-    } finally {
-      setIsLlmApplied(true);
-      setIsProcessingLlm(false);
-    }
-  };
+    if (!response.ok) throw new Error('LLM server error');
+    const data = await response.json();
+    setResults(prev => ({ ...prev, reasoning: data.reasoning }));
+    setSpectralData(prev => ({
+      ...prev,
+      classificationResult: { ...prev.classificationResult, reasoning: data.reasoning }
+    }));
+  } catch (err) {
+    // offline fallback แสดงผลจาก backend
+    setResults(prev => ({
+      ...prev,
+      reasoning: err.message.includes('fetch')
+        ? `[Offline] Cannot connect to AI server. Please run: ollama serve`
+        : `Error: ${err.message}`
+    }));
+  } finally {
+    setIsLlmApplied(true);
+    setIsProcessingLlm(false);
+  }
+};
 
   const handleClearClick = () => {
     setShowClearModal(true);

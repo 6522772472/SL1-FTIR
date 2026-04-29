@@ -16,7 +16,11 @@ os.environ.setdefault("KERAS_BACKEND", "jax")
 
 import json
 import logging
-
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import io
+import base64
 import keras
 import tensorflow as tf
 from tensorflow import GradientTape
@@ -28,6 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from scipy import interpolate
 from scipy.signal import savgol_filter
+from scipy.signal import find_peaks
 from scipy.stats import pearsonr
 from pydantic import BaseModel
 import ollama
@@ -1171,6 +1176,7 @@ class ReasoningRequest(BaseModel):
     plastic_type: str
     correlation: float
     image: Optional[List[float]] = None
+    clean_spectrum: Optional[List[float]] = None
 
 @app.post("/api/reasoning")
 async def generate_reasoning(request: ReasoningRequest):
@@ -1200,57 +1206,83 @@ async def generate_reasoning(request: ReasoningRequest):
     22. PVC: [615, 690, 1253, 1425, 2910, 2969]
     """
 
-    prompt_base = f"""
-    You are an expert polymer chemist.
-    We analyzed a microplastic spectrum using FTIR. The CNN model predicted it as "{request.plastic_type}" with a confidence of {request.correlation:.4f}.
+    wavenumbers = np.linspace(650, 4000, 1340)
     
-    Here is our reference theoretical database for FTIR peaks:
-    ---
-    {THEORY_DATABASE}
-    ---
-    """
+    #Dominant Peaks[x, y] ให้ llama3
+    peak_list_str = "No peaks detected."
+    if request.clean_spectrum and len(request.clean_spectrum) == 1340:
+        intensities = np.array(request.clean_spectrum)
+        
+        #ค้นหาจุดสูงสุดของกราฟ
+        peaks_indices, properties = find_peaks(intensities, height=0.05, distance=20)
+        
+        if len(peaks_indices) > 0:
+            peak_heights = properties['peak_heights']
+            #ดึง Top 7 พีคที่เด่นที่สุดมา
+            top_indices = peaks_indices[np.argsort(peak_heights)[::-1][:7]]
+            
+            peaks_formatted = []
+            for idx in sorted(top_indices):
+                x_val = wavenumbers[idx]
+                y_val = intensities[idx]
+                peaks_formatted.append(f"[x: {x_val:.1f} cm-1, y: {y_val:.4f}]")
+            
+            peak_list_str = ",\n".join(peaks_formatted)
+
+    img_base64 = None
+    if request.llm_engine == "llava" and request.clean_spectrum:
+        #สั่งวาดกราฟ
+        plt.figure(figsize=(8, 4))
+        plt.plot(wavenumbers, request.clean_spectrum, color='green')
+        plt.title(f"Denoised Spectrum for {request.plastic_type}")
+        plt.xlabel("Wavenumber (cm-1)")
+        plt.ylabel("Intensity")
+        
+        #แปลงกราฟเป็นรูปภาพ Base64 เพื่อส่งให้ llava
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        plt.close()
 
     messages = []
 
-    #llava(ตอนนี้ยังแปลงภาพ)
-    if request.llm_engine == "llava" and request.image:
-        #แปลงค่าสีแดงเป็น Wavenumber
-        red_spots = []
-        #แกน X สมมติ 1,340 จุด(ตั้งแต่ 650 ถึง 4000)
-        wavenumbers = np.linspace(650, 4000, 1340)
-        
-        #เช็คจำนวนจุด
-        if len(request.image) == 1340:
-            #แกน X มาจับคู่กับ Array ความร้อน(request.image) ทีละจุด
-            for i, heat in enumerate(request.image):
-                if heat > 0.7:  #ดึงเฉพาะจุดที่สีแดงเข้ม(เกิน 0.7)
-                    red_spots.append(int(wavenumbers[i]))
-                    
-        #จัดกลุ่มตัวเลขที่ใกล้เคียงกัน(รวมเป็นตัวเลขที่ได้ แต่อยู่ในstr)
-        red_spot_str = ", ".join(map(str, sorted(list(set(red_spots)))[:15])) if red_spots else "various wavenumbers"
+    if request.llm_engine == "llama3":
+        prompt = f"""
+You are an expert analytical chemist.
+Prediction: {request.plastic_type} (Confidence: {request.correlation:.4f}).
+Extracted Peaks from Denoised Spectrum: {peak_list_str}
+Theoretical Database: {THEORY_DATABASE}
 
-        prompt = prompt_base + f"""
-        Look at the CNN activation map data. The model focused heavily on the following wavenumbers: {red_spot_str} cm-1. 
-        Compare these focused wavenumbers with the theoretical peaks of {request.plastic_type} in the database.
-
-        CRITICAL RULES:
-        1. STRICT MATCHING: If the focused wavenumbers (e.g., ~810 cm-1) DO NOT MATCH the theoretical peaks of {request.plastic_type} (e.g., 1728 cm-1), YOU MUST STATE CLEARLY THAT THEY DO NOT MATCH. Do NOT pretend that 800 is close to 1700.
-        2. XAI EXPLANATION: If there is a mismatch, explain from a Deep Learning perspective that CNNs sometimes learn non-theoretical features, such as background noise, baseline characteristics, or minor structural vibrations specific to the training dataset, rather than the primary chemical bonds.
-        3. If they DO match, explain the chemical bonds based ONLY on the database.
-        4. Keep the tone academic, objective, and within 3 short paragraphs.
-        """
-        
-        messages = [{'role': 'user', 'content': prompt}]
-        
-    else:
-        #(llama3)
-        prompt = prompt_base + f"\nBased strictly on the theoretical database provided above, look up the characteristic peaks of {request.plastic_type} and provide an academic, concise explanation of why these absorption peaks correspond to its chemical structure. Start your explanation immediately. Keep it within 3 short paragraphs."
-        
+STRICT RULES:
+1. Compare the extracted peaks with the theoretical database for {request.plastic_type}.
+2. If the extracted peaks DO NOT MATCH the numbers in the database, YOU MUST STATE: "The extracted peaks do not match the theoretical database."
+3. DO NOT invent or guess chemical bonds for unmatched peaks.
+4. If there is a mismatch, explain that the Denoising model likely suppressed or altered the primary theoretical peaks during the noise removal process.
+5. Keep it to 2 short paragraphs. Be strictly truthful.
+"""
         messages = [{'role': 'user', 'content': prompt}]
 
-    #Ollama คิดคำตอบ
+    elif request.llm_engine == "llava":
+        prompt = f"""
+You are an expert analytical chemist. Look at the attached Denoised FTIR Spectrum.
+Prediction: {request.plastic_type} (Confidence: {request.correlation:.4f}).
+Theoretical Database: {THEORY_DATABASE}
+
+STRICT RULES:
+1. Visually verify if the peaks listed in the theoretical database for {request.plastic_type} actually exist in the image.
+2. If the theoretical peaks (e.g., 2915 or 1465 cm-1 for HDPE) are MISSING or the line is flat in those areas, YOU MUST STATE: "The characteristic theoretical peaks are not visible in this spectrum."
+3. DO NOT pretend to see peaks that are not there.
+4. If missing, conclude that the Denoising architecture likely smoothed out these theoretical features, yet the CNN still learned to classify it based on residual patterns.
+5. Keep it to 2 short paragraphs. Be strictly truthful.
+"""
+        if img_base64:
+            messages = [{'role': 'user', 'content': prompt, 'images': [img_base64]}]
+        else:
+            messages = [{'role': 'user', 'content': prompt}]
+
     try:
         response = ollama.chat(model=request.llm_engine, messages=messages)
         return {"reasoning": response['message']['content']}
     except Exception as e:
-        return {"reasoning": f"Error from Ollama: {str(e)}"}
+        return {"reasoning": f"Error: {str(e)}"}
