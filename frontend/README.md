@@ -11,6 +11,7 @@ This application provides a streamlined, step-by-step workflow for analyzing FTI
 - **Multi-Step Guided Analysis**: A 4-step process walks the user from data upload to final classification.
 - **Advanced Denoising**: Utilizes deep learning models to clean spectral data, with options for different membrane filters.
 - **Two-Stage Classification**: Employs a combination of denoising and classification models for higher accuracy.
+- **Explainable AI (XAI) Reasoning**: Integrates with local LLMs (Llama 3, LLaVA) via Ollama to generate scientific explanations based on dominant peaks extracted from the denoised spectrum.
 - **Correlation Fallback**: If a specific model is unavailable, the system automatically falls back to a robust correlation-based classification against a reference library.
 - **PDF Report Generation**: Users can download a comprehensive PDF report of the complete analysis, including all charts and results.
 - **Class Activation Map (CAM) Visualization**: The interface can display a heatmap over the spectrum chart, visualizing which regions the classification model focused on.
@@ -43,10 +44,17 @@ FTIR_Project/
 
 ### Clone Project From github
 
-    git clone https://github.com/kaopeetipat/FTIR_Project.git
+    git clone https://github.com/6522772472/SL1-FTIR.git
     cd FTIR_Project
     
 ### Backend Setup
+
+0. Setup Local AI Models (Ollama)
+    ```bash
+    ollama pull llama3
+    ollama pull llava
+    ollama pull nomic-embed-text
+    ```
 
 1.  **Navigate to the backend directory:**
     ```bash
@@ -54,6 +62,13 @@ FTIR_Project/
     ```
 
 2.  **Create and activate a Python virtual environment:**
+    <!-- Windows: -->
+    ```bash
+    python -m venv venv
+    venv\Scripts\activate
+    ```
+
+    <!-- macOS / Linux: -->
     ```bash
     python3 -m venv venv
     source venv/bin/activate
@@ -61,14 +76,25 @@ FTIR_Project/
 
 3.  **Install the required dependencies:**
     ```bash
+    pip install --upgrade pip
     pip install -r requirements.txt
     ```
 
 4.  **Start the backend server:**
     The backend requires the JAX backend for Keras. Start the server with the following command:
+
+    <!-- Windows: -->
     ```bash
-    KERAS_BACKEND=jax uvicorn main:app --reload --port 8000
+    set KERAS_BACKEND=tensorflow
+    python -m uvicorn main:app --reload --port 8000
     ```
+
+    <!-- macOS / Linux: -->
+    ```bash
+    export KERAS_BACKEND=tensorflow
+    python3 -m uvicorn main:app --reload --port 8000
+    ```
+
     The API will be available at `http://localhost:8000`.
 
 ### Frontend Setup
@@ -93,7 +119,7 @@ FTIR_Project/
 
 The deep learning models are **not included** in this repository and must be downloaded separately.
 
-- **Download the models** from the provided source (https://drive.google.com/drive/folders/1GnpQ2rniPb_F9MDG2nncYQHRJVlGVfRp?dmr=1&ec=wgc-drive-globalnav-goto).
+- **Download the models** from the provided source (https://drive.google.com/drive/folders/1kZ4rFxwHrr8XfAQNfooutfBXa35fi3G7?usp=drive_link).
 - **Place the `.h5` files** into the `backend/model/` directory.
 
 ### Model Naming Convention
@@ -101,11 +127,11 @@ The deep learning models are **not included** in this repository and must be dow
 The backend uses a specific naming convention to identify and load the models. There are two types of models used in the workflow:
 
 1.  **Denoising Models (Step 3)**: These models are used to clean the input spectrum.
-    -   **Format**: `TrainingModel_{Filter}_{DenoiseType}.h5`
+    -   **Format**: `TrainingModel_{Filter}_{SNR}_{DenoiseType}.h5`
     -   **Example**: `TrainingModel_B_20SNR_CAE.h5`
 
 2.  **Classification Models (Step 4)**: These models are used to classify the denoised spectrum.
-    -   **Format**: `ClassifierModel_{Filter}_{DenoiseType}_{ClassifierType}.h5`
+    -   **Format**: `ClassifierModel_{Filter}_{SNR}_{DenoiseType}_{ClassifierType}.h5`
     -   **Example**: `ClassifierModel_B_20SNR_CAE_AlexNet.h5`
 
 The system will automatically detect the available models based on their filenames. If a model for a selected combination is not found, the application will use a correlation-based method for classification.
@@ -124,7 +150,9 @@ The system will automatically detect the available models based on their filenam
 4.  **Step 4: Classification**
     -   Select a classification model. The backend will use the corresponding `ClassifierModel` to identify the microplastic type.
     -   The results, including the plastic type, confidence score, and correlation, will be displayed.
-    -   At this stage, you can download a full PDF report of the analysis.
+    -   Choose an LLM Engine (Llama 3 or LLaVA) to generate a chemical reasoning report.
+    -   The system will extract dominant peaks from the denoised spectrum and match them against the plastic theory database to provide an explainable AI output.
+    -   Download a full PDF report of the analysis.
 
 ## 📄 License
 
