@@ -14,4 +14,4 @@ This application provides a streamlined, step-by-step workflow for analyzing FTI
 - **Class Activation Map (CAM) Visualization**: The interface can display a heatmap over the spectrum chart, visualizing which regions the classification model focused on.
 - **Interactive Charts**: The application uses interactive charts to visualize the spectrum at each stage of the analysis.
 
-# Read more in "backend" folder and "frontend" folder
+# Read more in -> "backend" and "frontend" folder.
