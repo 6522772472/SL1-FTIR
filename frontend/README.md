@@ -45,7 +45,7 @@ FTIR_Project/
 ### Clone Project From github
 
     git clone https://github.com/6522772472/SL1-FTIR.git
-    cd FTIR_Project
+    cd SL1-FTIR
     
 ### Backend Setup
 
