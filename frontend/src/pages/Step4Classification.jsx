@@ -150,7 +150,7 @@ function Step4Classification({
         llm_engine:      llmEngine,
         plastic_type:    results.plasticType || 'Unknown',
         correlation:     results.correlation || 0,
-        clean_spectrum: spectralData.preprocessedIntensities || [] 
+        denoised_spectrum: spectralData.denoisedIntensities || [] 
         })
     });
 

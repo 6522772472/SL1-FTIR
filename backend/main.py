@@ -1202,7 +1202,7 @@ class ReasoningRequest(BaseModel):
     plastic_type: str
     correlation: float
     image: Optional[List[float]] = None
-    clean_spectrum: Optional[List[float]] = None
+    denoised_spectrum: Optional[List[float]] = None
 
 @app.post("/api/reasoning")
 async def generate_reasoning(request: ReasoningRequest):
@@ -1212,11 +1212,12 @@ async def generate_reasoning(request: ReasoningRequest):
     #ค้นหา Dominant Peaks และส่งเฉพาะแกน x(wavenumber) ไปให้ LLM
     peak_wavenumbers_str = "No peaks detected."
     peak_wavenumbers_list = []
-    if request.clean_spectrum and len(request.clean_spectrum) == 1340:
-        intensities = np.array(request.clean_spectrum)
+    
+    if request.denoised_spectrum and len(request.denoised_spectrum) == 1340:
+        intensities = np.array(request.denoised_spectrum)
         
         #ค้นหาจุดสูงสุดของกราฟ
-        peaks_indices, properties = find_peaks(intensities, height=0.05, distance=20)
+        peaks_indices, properties = find_peaks(intensities, height=0.1, distance=20)
         
         if len(peaks_indices) > 0:
             peak_heights = properties['peak_heights']
@@ -1235,16 +1236,17 @@ async def generate_reasoning(request: ReasoningRequest):
     print(f"  Correlation: {request.correlation:.4f}\n")
 
     img_base64 = None
-    if request.llm_engine == "llava" and request.clean_spectrum:
+    if request.llm_engine == "llava" and request.denoised_spectrum:
         #สั่งวาดกราฟใหม่สำหรับให้ llava ดู, พร้อมระบุ dominant peaks
         fig, ax = plt.subplots(figsize=(8, 4))
-        ax.plot(wavenumbers, request.clean_spectrum, color='green')
+        ax.plot(wavenumbers, request.denoised_spectrum, color='green')
         ax.set_title(f"Denoised Spectrum for {request.plastic_type}")
         ax.set_xlabel("Wavenumber (cm⁻¹)")
         ax.set_ylabel("Intensity")
         
         #วาดจุด dominant peaks บนกราฟให้ llava เห็นชัด
-        intensities = np.array(request.clean_spectrum)
+        intensities = np.array(request.denoised_spectrum)
+        
         for x_val in peak_wavenumbers_list:
             idx = int(round((x_val - 650) / (4000 - 650) * (1340 - 1)))
             idx = max(0, min(1339, idx))
