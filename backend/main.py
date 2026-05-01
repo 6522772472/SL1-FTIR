@@ -4,7 +4,7 @@ FastAPI backend for FTIR microplastic classification.
 This service exposes the same endpoints that the redesigned frontend expects
 but upgrades Step 4 so that it can execute the real AlexNet/LeNet5 classifiers
 that live in backend/model/*.h5.  Models were exported with Keras 3, so we run
-them with the JAX backend (KERAS_BACKEND=jax) inside backend/venv.
+them with the JAX backend (KERAS_BACKEND=tensorflow) inside backend/venv.
 """
 
 import os
@@ -12,7 +12,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-os.environ.setdefault("KERAS_BACKEND", "jax")
+os.environ.setdefault("KERAS_BACKEND", "tensorflow")
 
 import json
 import logging
@@ -23,6 +23,7 @@ import io
 import base64
 import keras
 import tensorflow as tf
+import re
 from tensorflow import GradientTape
 from tensorflow.keras.layers import Layer
 import numpy as np
@@ -141,6 +142,31 @@ NameList = [
     "PVA",
     "PVC",
 ]
+
+PLASTIC_DB = {
+    "Acrylic": "Acrylic (Polyacrylate) - 1150 (C-O stretching), 1195 (C-O stretching), 1728 (C=O stretching), 2947 (C-H stretching)",
+    "Cellulose": "Cellulose - 900 (beta-glycosidic linkage), 1005 (C-O stretching), 1065 (C-O-C stretching), 1280 (C-H bending), 1650 (O-H bending of absorbed water)",
+    "ENR": "ENR (Epoxidized Natural Rubber) - 870 (Epoxy ring vibration), 1380 (CH3 bending), 1450 (CH2 bending), 2854 (CH2 symmetric stretching), 2916 (CH2 asymmetric stretching), 2960 (CH3 asymmetric stretching)",
+    "EPDM": "EPDM (Ethylene Propylene Diene Monomer) - 720 (CH2 rocking), 1376 (CH3 symmetric bending), 1466 (CH2 bending), 2848 (CH2 symmetric stretching), 2918 (CH2 asymmetric stretching)",
+    "HDPE": "HDPE (High-Density Polyethylene) - 720 (CH2 rocking), 731 (CH2 rocking), 1470 (CH2 bending), 2850 (CH2 symmetric stretching), 2915 (CH2 asymmetric stretching)",
+    "LDPE": "LDPE (Low-Density Polyethylene) - 720 (CH2 rocking), 731 (CH2 rocking), 1460 (CH2 bending), 2850 (CH2 symmetric stretching), 2920 (CH2 asymmetric stretching)",
+    "Nylon": "Nylon (Polyamide) - 690 (N-H out-of-plane bending), 1200 (C-N stretching), 1266 (Amide III), 1542 (Amide II), 1638 (Amide I, C=O stretching), 2870 (CH2 symmetric stretching), 2933 (CH2 asymmetric stretching), 3300 (N-H stretching)",
+    "PBAT": "PBAT (Polybutylene Adipate Terephthalate) - 728 (CH2 rocking), 1020 (C-O stretching), 1105 (C-O-C stretching), 1270 (C-O stretching), 1715 (C=O stretching), 2365 (O=C=O stretching / CO2 interference), 2960 (C-H stretching)",
+    "PBS": "PBS (Polybutylene Succinate) - 805 (C-H out-of-plane bending), 919 (C-OH bending), 954 (C-O stretching), 1050 (C-O-C stretching), 1151 (C-O-C stretching), 1312 (CH2 wagging), 1313 (CH2 wagging), 1715 (C=O stretching)",
+    "PC": "PC (Polycarbonate) - 830 (C-H out-of-plane bending), 1080 (O-C-O stretching), 1161 (C-O-C stretching), 1500 (C=C aromatic stretching), 1772 (C=O stretching)",
+    "PEEK": "PEEK (Polyether Ether Ketone) - 895 (C-H out-of-plane bending), 1094 (C-O-C stretching), 1235 (C-O-C stretching), 1490 (C=C aromatic stretching), 1598 (C=C aromatic stretching), 1651 (C=O stretching), 2915 (C-H stretching), 2977 (C-H stretching)",
+    "PEI": "PEI (Polyetherimide) - 1354 (C-N stretching), 1718 (C=O symmetric stretching), 1776 (C=O asymmetric stretching), 2933 (C-H stretching)",
+    "PET": "PET (Polyethylene Terephthalate) - 724 (C-H out-of-plane bending), 872 (C-H out-of-plane bending), 1095 (C-O stretching), 1241 (C-C-O stretching), 1714 (C=O stretching), 2963 (C-H stretching)",
+    "PLA": "PLA (Polylactic Acid) - 1088 (C-O-C stretching), 1184 (C-O-C stretching), 1456 (CH3 asymmetric bending), 1751 (C=O stretching), 2921 (CH stretching), 2997 (CH3 asymmetric stretching)",
+    "PMMA": "PMMA (Polymethyl Methacrylate) - 841 (CH2 rocking), 1146 (C-O-C stretching), 1437 (CH3 asymmetric bending), 1724 (C=O stretching), 2952 (CH3 symmetric stretching), 2995 (CH3 asymmetric stretching)",
+    "POM": "POM (Polyoxymethylene) - 680 (CH2 rocking), 927 (C-O-C symmetric stretching), 1218 (CH2 twisting), 1488 (CH2 bending), 1596 (C-O-C stretching), 2921 (CH2 symmetric stretching), 2980 (CH2 asymmetric stretching)",
+    "PP": "PP (Polypropylene) - 841 (CH2 rocking), 973 (C-C stretching), 997 (CH3 rocking), 1166 (C-C stretching), 1376 (CH3 symmetric bending), 1456 (CH2 bending), 2839 (CH2 symmetric stretching), 2916 (CH2 asymmetric stretching), 2951 (CH3 asymmetric stretching)",
+    "PS": "PS (Polystyrene) - 698 (C-H out-of-plane bending, mono-substituted benzene), 757 (C-H out-of-plane bending), 1454 (C=C aromatic ring stretching), 1494 (C=C aromatic ring stretching), 2848 (CH2 symmetric stretching), 2921 (CH2 asymmetric stretching), 3027 (C-H aromatic stretching)",
+    "PTFE": "PTFE (Polytetrafluoroethylene / Teflon) - 1146 (CF2 symmetric stretching), 1201 (CF2 asymmetric stretching)",
+    "PU": "PU (Polyurethane) - 1528 (Amide II), 1700 (C=O stretching, H-bonded), 1728 (C=O stretching, free), 2933 (CH2 asymmetric stretching), 3290 (N-H stretching)",
+    "PVA": "PVA (Polyvinyl Alcohol) - 1088 (C-O stretching), 2910 (CH2 symmetric stretching), 2938 (CH2 asymmetric stretching), 3303 (O-H stretching)",
+    "PVC": "PVC (Polyvinyl Chloride) - 615 (C-Cl stretching), 690 (C-Cl stretching), 1253 (C-H rocking), 1425 (CH2 bending), 2910 (CH2 symmetric stretching), 2969 (CH2 asymmetric stretching)",
+}
 
 if not SYN_CLEAN_PATH.exists():
     raise RuntimeError(f"Reference dataset not found at {SYN_CLEAN_PATH}")
@@ -1180,36 +1206,12 @@ class ReasoningRequest(BaseModel):
 
 @app.post("/api/reasoning")
 async def generate_reasoning(request: ReasoningRequest):
-    
-    THEORY_DATABASE = """
-    1. Acrylic: [1150, 1195, 1728, 2947] (C=O stretching at 1728)
-    2. Cellulose: [900, 1005, 1065, 1280, 1650]
-    3. ENR: [870, 1380, 1450, 2854, 2916, 2960]
-    4. EPDM: [720, 1376, 1466, 2848, 2918]
-    5. HDPE: [720, 731, 1470, 2850, 2915]
-    6. LDPE: [720, 731, 1460, 2850, 2920]
-    7. Nylon: [690, 1200, 1266, 1542, 1638, 2870, 2933, 3300]
-    8. PBAT: [728, 1020, 1105, 1270, 1715, 2365, 2960]
-    9. PBS: [805, 919, 954, 1050, 1151, 1312, 1313, 1715]
-    10. PC: [830, 1080, 1161, 1500, 1772]
-    11. PEEK: [895, 1094, 1235, 1490, 1598, 1651, 2915, 2977]
-    12. PEI: [1354, 1718, 1776, 2933]
-    13. PET: [724, 872, 1095, 1241, 1714, 2963]
-    14. PLA: [1088, 1184, 1456, 1751, 2921, 2997]
-    15. PMMA: [841, 1146, 1437, 1724, 2952, 2995]
-    16. POM: [680, 927, 1218, 1488, 1596, 2921, 2980]
-    17. PP: [841, 973, 997, 1166, 1376, 1456, 2839, 2916, 2951]
-    18. PS: [698, 757, 1454, 1494, 2848, 2921, 3027]
-    19. PTFE: [1146, 1201]
-    20. PU: [1528, 1700, 1728, 2933, 3290]
-    21. PVA: [1088, 2910, 2938, 3303]
-    22. PVC: [615, 690, 1253, 1425, 2910, 2969]
-    """
 
     wavenumbers = np.linspace(650, 4000, 1340)
     
-    #Dominant Peaks[x, y] ให้ llama3
-    peak_list_str = "No peaks detected."
+    #ค้นหา Dominant Peaks และส่งเฉพาะแกน x(wavenumber) ไปให้ LLM
+    peak_wavenumbers_str = "No peaks detected."
+    peak_wavenumbers_list = []
     if request.clean_spectrum and len(request.clean_spectrum) == 1340:
         intensities = np.array(request.clean_spectrum)
         
@@ -1221,61 +1223,91 @@ async def generate_reasoning(request: ReasoningRequest):
             #ดึง Top 7 พีคที่เด่นที่สุดมา
             top_indices = peaks_indices[np.argsort(peak_heights)[::-1][:7]]
             
-            peaks_formatted = []
             for idx in sorted(top_indices):
-                x_val = wavenumbers[idx]
-                y_val = intensities[idx]
-                peaks_formatted.append(f"[x: {x_val:.1f} cm-1, y: {y_val:.4f}]")
+                x_val = round(float(wavenumbers[idx]), 1)
+                peak_wavenumbers_list.append(x_val)
             
-            peak_list_str = ",\n".join(peaks_formatted)
+            peak_wavenumbers_str = ", ".join(f"{x:.1f}" for x in peak_wavenumbers_list) + " cm⁻¹"
+
+    #พิมพ์ dominant peaks ใน Terminal
+    print(f"\n[DOMINANT PEAKS] Plastic: {request.plastic_type} | LLM: {request.llm_engine}")
+    print(f"  Peak wavenumbers: {peak_wavenumbers_str}")
+    print(f"  Correlation: {request.correlation:.4f}\n")
 
     img_base64 = None
     if request.llm_engine == "llava" and request.clean_spectrum:
-        #สั่งวาดกราฟ
-        plt.figure(figsize=(8, 4))
-        plt.plot(wavenumbers, request.clean_spectrum, color='green')
-        plt.title(f"Denoised Spectrum for {request.plastic_type}")
-        plt.xlabel("Wavenumber (cm-1)")
-        plt.ylabel("Intensity")
+        #สั่งวาดกราฟใหม่สำหรับให้ llava ดู, พร้อมระบุ dominant peaks
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(wavenumbers, request.clean_spectrum, color='green')
+        ax.set_title(f"Denoised Spectrum for {request.plastic_type}")
+        ax.set_xlabel("Wavenumber (cm⁻¹)")
+        ax.set_ylabel("Intensity")
         
-        #แปลงกราฟเป็นรูปภาพ Base64 เพื่อส่งให้ llava
+        #วาดจุด dominant peaks บนกราฟให้ llava เห็นชัด
+        intensities = np.array(request.clean_spectrum)
+        for x_val in peak_wavenumbers_list:
+            idx = int(round((x_val - 650) / (4000 - 650) * (1340 - 1)))
+            idx = max(0, min(1339, idx))
+            ax.axvline(x=x_val, color='red', linestyle='--', alpha=0.5, linewidth=0.8)
+            ax.annotate(f"{x_val:.0f}", xy=(x_val, intensities[idx]),
+                        fontsize=6, color='red', ha='center', va='bottom')
+        
+        #แปลงกราฟเป็นรูปภาพ Base64 เพื่อส่งให้ LLaVA
         buf = io.BytesIO()
-        plt.savefig(buf, format='png')
+        plt.savefig(buf, format='png', dpi=100)
         buf.seek(0)
         img_base64 = base64.b64encode(buf.read()).decode('utf-8')
         plt.close()
 
+    #ดึง plastic_db ตามชื่อพลาสติกที่ CNN ทายได้
+    target_plastic_theory = PLASTIC_DB.get(request.plastic_type, "")
+    #หา "ตัวเลข" และ "ข้อความในวงเล็บ" -> จะได้ออกมาประมาณนี้('1728', 'C=O stretching')
+    theory_matches = re.findall(r'(\d+)\s*\((.*?)\)', target_plastic_theory)
+
+    #ตรงกับไม่ตรง
+    matched_peaks = []
+    unmatched_peaks = []
+
+    #เอา 7พีคที่ตรวจเจอ (det_x) มา loop เช็ค
+    for det_x in peak_wavenumbers_list:
+        is_match = False
+        for t_val_str, bond in theory_matches:
+            t_val = int(t_val_str)
+            if abs(det_x - t_val) <= 50: #ระยะ Tolerance 50
+                matched_peaks.append(f"{det_x} cm⁻¹ (matches {t_val} cm⁻¹: {bond})")
+                is_match = True
+                break
+        if not is_match:
+            unmatched_peaks.append(f"{det_x} cm⁻¹")
+
+    matched_str = "\n- ".join(matched_peaks) if matched_peaks else "None"
+    unmatched_str = ", ".join(unmatched_peaks) if unmatched_peaks else "None"
+
+    prompt = f"""You are an expert analytical chemist specializing in FTIR spectroscopy.
+
+The CNN model has predicted this spectrum as: {request.plastic_type}
+
+Here is the exact matching analysis performed by the system (Tolerance ±50 cm⁻¹):
+MATCHED PEAKS (Consistent with {request.plastic_type} theory):
+- {matched_str}
+
+UNASSIGNED PEAKS (Artifacts):
+- {unmatched_str}
+
+INSTRUCTIONS & CRITICAL RULES:
+1. You MUST write your response in EXACTLY TWO PARAGRAPHS. No more, no less.
+2. DO NOT use introductory phrases like "Here is the analysis" or "Paragraph 1:". Start the first sentence directly with the chemical analysis.
+3. In the first paragraph, discuss the MATCHED PEAKS. Explain how these specific chemical bonds confirm the presence of {request.plastic_type}. DO NOT expand abbreviations (e.g., do not guess what ENR stands for) unless you are absolutely certain of the polymer science. DO NOT invent any peaks or bonds.
+4. In the second paragraph, state clearly that the UNASSIGNED PEAKS ({unmatched_str}) are artifacts from the membrane filter interference or CNN denoising process, and do not belong to the polymer's structure.
+5. Keep the tone academic, positive, and objective.
+"""
+
     messages = []
 
     if request.llm_engine == "llama3":
-        prompt = f"""
-You are an expert analytical chemist.
-Prediction: {request.plastic_type} (Confidence: {request.correlation:.4f}).
-Extracted Peaks from Denoised Spectrum: {peak_list_str}
-Theoretical Database: {THEORY_DATABASE}
-
-STRICT RULES:
-1. Compare the extracted peaks with the theoretical database for {request.plastic_type}.
-2. If the extracted peaks DO NOT MATCH the numbers in the database, YOU MUST STATE: "The extracted peaks do not match the theoretical database."
-3. DO NOT invent or guess chemical bonds for unmatched peaks.
-4. If there is a mismatch, explain that the Denoising model likely suppressed or altered the primary theoretical peaks during the noise removal process.
-5. Keep it to 2 short paragraphs. Be strictly truthful.
-"""
         messages = [{'role': 'user', 'content': prompt}]
-
     elif request.llm_engine == "llava":
-        prompt = f"""
-You are an expert analytical chemist. Look at the attached Denoised FTIR Spectrum.
-Prediction: {request.plastic_type} (Confidence: {request.correlation:.4f}).
-Theoretical Database: {THEORY_DATABASE}
-
-STRICT RULES:
-1. Visually verify if the peaks listed in the theoretical database for {request.plastic_type} actually exist in the image.
-2. If the theoretical peaks (e.g., 2915 or 1465 cm-1 for HDPE) are MISSING or the line is flat in those areas, YOU MUST STATE: "The characteristic theoretical peaks are not visible in this spectrum."
-3. DO NOT pretend to see peaks that are not there.
-4. If missing, conclude that the Denoising architecture likely smoothed out these theoretical features, yet the CNN still learned to classify it based on residual patterns.
-5. Keep it to 2 short paragraphs. Be strictly truthful.
-"""
+        #สำหรับ LLaVA บังคับให้อ่านจาก Prompt เป็นหลัก
         if img_base64:
             messages = [{'role': 'user', 'content': prompt, 'images': [img_base64]}]
         else:

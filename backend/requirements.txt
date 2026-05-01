@@ -5,5 +5,12 @@ scipy>=1.14.0
 pandas>=2.2.3
 python-multipart==0.0.20
 keras>=3.10.0
-jax[cpu]>=0.4.30
+tensorflow
 pybaselines
+matplotlib
+ollama
+langchain
+langchain-community
+chromadb
+pypdf
+sentence-transformers
