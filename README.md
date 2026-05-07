@@ -1,3 +1,5 @@
+# Download "model" for 'backend/model/' -> https://drive.google.com/drive/folders/1kZ4rFxwHrr8XfAQNfooutfBXa35fi3G7?usp=sharing
+
 # FTIR Microplastic Analysis System v2.0
 A full-stack web application for advanced FTIR microplastic analysis, featuring a React.js frontend and a FastAPI backend that leverages deep learning models for denoising and classification.
 
@@ -14,4 +16,4 @@ This application provides a streamlined, step-by-step workflow for analyzing FTI
 - **Class Activation Map (CAM) Visualization**: The interface can display a heatmap over the spectrum chart, visualizing which regions the classification model focused on.
 - **Interactive Charts**: The application uses interactive charts to visualize the spectrum at each stage of the analysis.
 
-# Read more in "backend" folder and "frontend" folder
+# Read more in "backend" and "frontend" folder
