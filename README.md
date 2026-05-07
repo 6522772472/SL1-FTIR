@@ -1,4 +1,4 @@
-# Download "model" for 'backend/model/' -> https://drive.google.com/drive/folders/1kZ4rFxwHrr8XfAQNfooutfBXa35fi3G7?usp=sharing
+## Download 'model' for "backend/model/" -> https://drive.google.com/drive/folders/1kZ4rFxwHrr8XfAQNfooutfBXa35fi3G7?usp=sharing
 
 # FTIR Microplastic Analysis System v2.0
 A full-stack web application for advanced FTIR microplastic analysis, featuring a React.js frontend and a FastAPI backend that leverages deep learning models for denoising and classification.
