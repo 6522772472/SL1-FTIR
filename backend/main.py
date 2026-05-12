@@ -1297,11 +1297,15 @@ UNASSIGNED PEAKS (Artifacts):
 - {unmatched_str}
 
 INSTRUCTIONS & CRITICAL RULES:
-1. You MUST write your response in EXACTLY TWO PARAGRAPHS. No more, no less.
-2. DO NOT use introductory phrases like "Here is the analysis" or "Paragraph 1:". Start the first sentence directly with the chemical analysis.
-3. In the first paragraph, discuss the MATCHED PEAKS. Explain how these specific chemical bonds confirm the presence of {request.plastic_type}. DO NOT expand abbreviations (e.g., do not guess what ENR stands for) unless you are absolutely certain of the polymer science. DO NOT invent any peaks or bonds.
-4. In the second paragraph, state clearly that the UNASSIGNED PEAKS ({unmatched_str}) are artifacts from the membrane filter interference or CNN denoising process, and do not belong to the polymer's structure.
-5. Keep the tone academic, positive, and objective.
+1. You MUST write your response in a SINGLE CONCISE PARAGRAPH.
+2. Start the first sentence DIRECTLY with the chemical analysis. 
+3. STRICTLY FORBIDDEN: Do NOT use introductory phrases like "The spectrum shows...", "In the image...", "The graph depicts...", or "Based on the analysis...".
+4. You MUST explicitly mention EVERY SINGLE peak listed in the MATCHED PEAKS section. DO NOT omit or skip any peaks.
+5. DO NOT round off or alter the numerical values. You MUST use the exact decimal numbers provided in the MATCHED PEAKS list (e.g., write 722.6 cm⁻¹, never round to 720 cm⁻¹).
+6. Explain how these specific chemical bonds confirm the identification of {request.plastic_type}.
+7. DO NOT mention unassigned peaks, artifacts, noise, or the visual display of the graph.
+8. DO NOT expand abbreviations (e.g., ENR) unless you are certain of the polymer science.
+9. Keep the tone academic, positive, objective, and direct.
 """
 
     messages = []

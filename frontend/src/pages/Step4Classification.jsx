@@ -9,8 +9,8 @@ const CLASSIFICATION_MODELS = [
 ];
 
 const LLM_MODELS = [
-  { value: 'llama3', label: 'Llama 3 (Text Only)' },
-  { value: 'llava', label: 'LLaVA (Vision)' }
+  { value: 'llama3', label: 'Llama 3 (Text)' },
+  { value: 'llava', label: 'LLaVA (Text + Vision)' }
 ];
 
 function Step4Classification({
